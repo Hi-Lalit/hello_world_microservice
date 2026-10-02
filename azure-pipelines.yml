@@ -1,0 +1,18 @@
+trigger:
+- main
+
+pool: 
+  vmImage: 'ubuntu-22.04'
+
+stages:
+- stage: Build
+  displayName: 'Build Stage'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build Docker Image'
+    steps:
+    - script: |
+        echo "Building Docker image..."
+        docker build -t python_app  .
+      displayName: 'Build Docker Image'
+      
