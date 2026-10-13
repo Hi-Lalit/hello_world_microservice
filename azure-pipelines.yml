@@ -13,12 +13,12 @@ stages:
     steps:
     - script: |
         echo "Building Docker image..."
-        docker build -t $(imageName)  .
+        docker build -t $(imageName):$(version) .
       displayName: 'Build Docker Image'
 
     - script: |
         echo "Tagging Docker image for registry..."
-        docker tag $(imageName) $(target_image)/$(imageName):$(version)
+        docker tag $(imageName):$(version) $(target_image)/$(imageName):$(version)
       displayName: 'Tag Docker Image for Registry'
 
 - stage: Push
