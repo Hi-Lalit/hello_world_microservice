@@ -13,12 +13,17 @@ stages:
     steps:
     - script: |
         echo "Building Docker image..."
-        docker build -t $(imageName):$(version) .
+        docker build -t $(imageName) .
       displayName: 'Build Docker Image'
 
     - script: |
+        echo "Available local Docker images:"
+        docker images
+      displayName: 'Debug Docker Images'
+
+    - script: |
         echo "Tagging Docker image for registry..."
-        docker tag $(imageName):$(version) $(target_image)/$(imageName):$(version)
+        docker tag $(imageName) $(target_image)/$(imageName)
       displayName: 'Tag Docker Image for Registry'
 
 - stage: Push
@@ -33,5 +38,5 @@ stages:
         echo "$(acrPassword)" | docker login $(acrLoginServer) -u $(acrUsername) --password-stdin
 
         echo "Pushing Docker image to registry..."
-        docker push $(target_image)/$(imageName):$(version)
+        docker push $(target_image)/$(imageName)
       displayName: 'Push Docker Image to Registry'     
