@@ -23,20 +23,13 @@ stages:
 
     - script: |
         echo "Tagging Docker image for registry..."
-        docker tag $(imageName) $(target_image)/$(imageName)
+        docker tag $(imageName) $(target_image)/$(imageName):$(version)
       displayName: 'Tag Docker Image for Registry'
 
-- stage: Push
-  displayName: 'Push Stage'
-  dependsOn: Build
-  jobs:
-  - job: PushJob
-    displayName: 'Push Docker Image to Registry'
-    steps:
     - script: |
         echo "Logging in to Docker registry..."
         echo "$(acrPassword)" | docker login $(acrLoginServer) -u $(acrUsername) --password-stdin
 
         echo "Pushing Docker image to registry..."
-        docker push $(target_image)/$(imageName)
+        docker push $(target_image)/$(imageName):$(version)
       displayName: 'Push Docker Image to Registry'     
