@@ -11,6 +11,13 @@ stages:
   - job: BuildJob
     displayName: 'Build Docker Image'
     steps:
+    - task: trivy@2
+      displayName: 'Run Trivy Security Scan'
+      inputs:
+        type: 'filesystem'
+        target: '.'
+        scanners: 'vuln,misconfig,secret'
+
     - script: |
         echo "Building Docker image..."
         docker build -t $(imageName) .
