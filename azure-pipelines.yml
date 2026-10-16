@@ -44,10 +44,10 @@ stages:
               echo "=== Installed Python package metadata ==="
               docker run --rm --entrypoint python "$IMAGE" -c \
                 "import importlib.metadata as m
-for p in ['flask', 'msgpack', 'setuptools', 'urllib3']:
-    matches = [(d.version, str(d._path)) for d in m.distributions()
-               if (d.metadata.get('Name') or '').lower() == p]
-    print(f'{p}: {matches or "NOT INSTALLED"}')"
+              for p in ['flask', 'msgpack', 'setuptools', 'urllib3']:
+                  matches = [(d.version, str(d._path)) for d in m.distributions()
+                            if (d.metadata.get('Name') or '').lower() == p]
+                  print(f'{p}: {matches or "NOT INSTALLED"}')"
 
               echo "=== Package metadata directories ==="
               docker run --rm --entrypoint sh "$IMAGE" -c \
