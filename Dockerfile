@@ -4,12 +4,14 @@ WORKDIR /service
 
 COPY requirements.txt .
 
+# Install dependencies, upgrade vulnerable packages, and create a non-root user
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir --upgrade \
        "msgpack>=1.2.1" \
        "setuptools>=78.1.1" \
        "urllib3>=2.8.0" \
-    && python -c "import importlib.metadata as m; print('\n'.join(f'{p}=={m.version(p)}' for p in ['msgpack', 'setuptools', 'urllib3']))" \
+    && python -c "import importlib.metadata as m; \
+print('\n'.join(f'{p}=={m.version(p)}' for p in ['msgpack', 'setuptools', 'urllib3']))" \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
 

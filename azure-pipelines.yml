@@ -27,24 +27,41 @@ stages:
           - script: |
               set -e
               echo "Building Docker image without cache..."
+
               docker build --pull --no-cache \
                 -t "$(imageName):$(version)" .
             displayName: 'Build Docker Image'
 
-          # 3. Verify actual installed package versions
+          # 3. Verify installed versions and locate duplicate metadata
           - script: |
               set -e
-              echo "Checking installed Python packages..."
 
-              docker run --rm \
-                --entrypoint python \
-                "$(imageName):$(version)" \
-                -c "import importlib.metadata as m; print('\n'.join(f'{p}=={m.version(p)}' for p in ['flask','msgpack','setuptools','urllib3']))"
-            displayName: 'Verify Python Package Versions'
+              IMAGE="$(imageName):$(version)"
+
+              echo "=== Image ID ==="
+              docker image inspect "$IMAGE" --format '{{.Id}}'
+
+              echo "=== Installed Python package metadata ==="
+              docker run --rm --entrypoint python "$IMAGE" -c \
+                "import importlib.metadata as m
+for p in ['flask', 'msgpack', 'setuptools', 'urllib3']:
+    matches = [(d.version, str(d._path)) for d in m.distributions()
+               if (d.metadata.get('Name') or '').lower() == p]
+    print(f'{p}: {matches or "NOT INSTALLED"}')"
+
+              echo "=== Package metadata directories ==="
+              docker run --rm --entrypoint sh "$IMAGE" -c \
+                "find /usr/local/lib -type d \( \
+                -name 'msgpack*.dist-info' -o \
+                -name 'setuptools*.dist-info' -o \
+                -name 'urllib3*.dist-info' \
+                \) -print"
+            displayName: 'Diagnose Python Package Metadata'
 
           # 4. Scan the exact image that was just built
           - script: |
               set -e
+
               echo "Scanning Docker image for vulnerabilities..."
 
               trivy image \
@@ -62,6 +79,7 @@ stages:
           # 6. Tag image for registry
           - script: |
               set -e
+
               docker tag \
                 "$(imageName):$(version)" \
                 "$(target_image)/$(imageName):$(version)"
@@ -70,6 +88,9 @@ stages:
           # 7. Login and push only after scans pass
           - script: |
               set -e
+
+              echo "Logging in to Docker registry..."
+
               echo "$(acrPassword)" | docker login "$(acrLoginServer)" \
                 -u "$(acrUsername)" \
                 --password-stdin
