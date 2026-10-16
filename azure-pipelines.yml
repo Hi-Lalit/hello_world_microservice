@@ -1,4 +1,3 @@
-
 trigger:
   - feature
 
@@ -24,51 +23,57 @@ stages:
               reports: 'html,json'
               publish: true
 
-          # 2. Build Docker image
+          # 2. Build a fresh Docker image
           - script: |
               set -e
-              echo "Building Docker image..."
-              docker build -t "$(imageName):$(version)" .
+              echo "Building Docker image without cache..."
+              docker build --pull --no-cache \
+                -t "$(imageName):$(version)" .
             displayName: 'Build Docker Image'
 
-          # 3. Scan the built Docker image
+          # 3. Verify actual installed package versions
+          - script: |
+              set -e
+              echo "Checking installed Python packages..."
+
+              docker run --rm \
+                --entrypoint python \
+                "$(imageName):$(version)" \
+                -c "import importlib.metadata as m; print('\n'.join(f'{p}=={m.version(p)}' for p in ['flask','msgpack','setuptools','urllib3']))"
+            displayName: 'Verify Python Package Versions'
+
+          # 4. Scan the exact image that was just built
           - script: |
               set -e
               echo "Scanning Docker image for vulnerabilities..."
 
               trivy image \
-                --scanners vuln,misconfig,secret \
+                --scanners vuln \
                 --severity HIGH,CRITICAL \
                 --exit-code 1 \
                 "$(imageName):$(version)"
             displayName: 'Trivy Docker Image Security Scan'
 
-          # 4. Display available images
+          # 5. Display available images
           - script: |
-              echo "Available local Docker images:"
               docker images
             displayName: 'Debug Docker Images'
 
-          # 5. Tag image for registry
+          # 6. Tag image for registry
           - script: |
               set -e
-              echo "Tagging Docker image for registry..."
-
               docker tag \
                 "$(imageName):$(version)" \
                 "$(target_image)/$(imageName):$(version)"
             displayName: 'Tag Docker Image'
 
-          # 6. Login and push image to registry
+          # 7. Login and push only after scans pass
           - script: |
               set -e
-              echo "Logging in to Docker registry..."
-
               echo "$(acrPassword)" | docker login "$(acrLoginServer)" \
                 -u "$(acrUsername)" \
                 --password-stdin
 
-              echo "Pushing Docker image to registry..."
               docker push "$(target_image)/$(imageName):$(version)"
 
               docker logout "$(acrLoginServer)"

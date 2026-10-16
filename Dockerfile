@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
        "msgpack>=1.2.1" \
        "setuptools>=78.1.1" \
        "urllib3>=2.8.0" \
+    && python -c "import importlib.metadata as m; print('\n'.join(f'{p}=={m.version(p)}' for p in ['msgpack', 'setuptools', 'urllib3']))" \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
 
