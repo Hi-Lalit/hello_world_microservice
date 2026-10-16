@@ -1,37 +1,50 @@
-trigger:
-- main
 
-pool: 
+trigger:
+  - feature
+
+pool:
   vmImage: 'ubuntu-22.04'
 
 stages:
-- stage: Build
-  displayName: 'Build Stage'
-  jobs:
-  - job: BuildJob
-    displayName: 'Build Docker Image'
-    steps:
-    - script: |
-        echo "Building Docker image..."
-        docker build -t $(imageName)  .
-      displayName: 'Build Docker Image'
+  - stage: Build
+    displayName: 'Build Stage'
 
-    - script: |
-        echo "Tagging Docker image for registry..."
-        docker tag $(imageName) $(target_image)/$(imageName):$(version)
-      displayName: 'Tag Docker Image for Registry'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build Docker Image'
 
-- stage: Push
-  displayName: 'Push Stage'
-  dependsOn: Build
-  jobs:
-  - job: PushJob
-    displayName: 'Push Docker Image to Registry'
-    steps:
-    - script: |
-        echo "Logging in to Docker registry..."
-        echo "$(acrPassword)" | docker login $(acrLoginServer) -u $(acrUsername) --password-stdin
+        steps:
+          - task: trivy@2
+            displayName: 'Run Trivy Security Scan'
+            inputs:
+              type: 'filesystem'
+              target: '.'
+              scanners: 'vuln,misconfig,secret'
+              jsonOutput: true
 
-        echo "Pushing Docker image to registry..."
-        docker push $(target_image)/$(imageName):$(version)
-      displayName: 'Push Docker Image to Registry'     
+          - script: |
+              set -e
+              echo "Building Docker image..."
+              docker build -t "$(imageName)" .
+            displayName: 'Build Docker Image'
+
+          - script: |
+              echo "Available local Docker images:"
+              docker images
+            displayName: 'Debug Docker Images'
+
+          - script: |
+              set -e
+              echo "Tagging Docker image for registry..."
+              docker tag "$(imageName)" "$(target_image)/$(imageName):$(version)"
+            displayName: 'Tag Docker Image'
+
+          - script: |
+              set -e
+              echo "Logging in to Docker registry..."
+              echo "$(acrPassword)" | docker login "$(acrLoginServer)" \
+                -u "$(acrUsername)" --password-stdin
+
+              echo "Pushing Docker image to registry..."
+              docker push "$(target_image)/$(imageName):$(version)"
+            displayName: 'Push Docker Image to Registry'
