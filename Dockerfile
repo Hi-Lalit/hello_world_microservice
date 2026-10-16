@@ -6,10 +6,11 @@ WORKDIR /service
 # Copy dependency definitions first for better layer caching
 COPY requirements.txt .
 
-# Upgrade pip and install application dependencies
+# Install application dependencies and verify consistency
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt \
     && python -m pip check \
+    && python -m pip uninstall -y pip \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
 
