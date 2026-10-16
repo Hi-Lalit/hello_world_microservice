@@ -21,6 +21,8 @@ stages:
               type: 'filesystem'
               target: '.'
               scanners: 'vuln,misconfig,secret'
+              reports: 'html,json'
+              publish: true
 
           # 2. Build Docker image
           - script: |
