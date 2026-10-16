@@ -1,3 +1,4 @@
+
 FROM python:3-alpine
 
 WORKDIR /service
@@ -5,15 +6,10 @@ WORKDIR /service
 # Copy dependency definitions first for better layer caching
 COPY requirements.txt .
 
-# Upgrade pip and install dependencies with security fixes
+# Upgrade pip and install application dependencies
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt \
-    && python -m pip install --no-cache-dir --upgrade \
-       "msgpack>=1.2.1" \
-       "setuptools>=78.1.1" \
-       "urllib3>=2.8.0" \
     && python -m pip check \
-    && python -c "import importlib.metadata as m; print('\n'.join('{}=={}'.format(p, m.version(p)) for p in ['msgpack', 'setuptools', 'urllib3']))" \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
 
