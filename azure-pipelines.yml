@@ -43,17 +43,39 @@ stages:
               docker image inspect "$IMAGE" --format '{{.Id}}'
 
               echo "=== Installed Python package metadata ==="
-              docker run --rm --entrypoint python "$IMAGE" -c "import importlib.metadata as m; packages=['flask','msgpack','setuptools','urllib3']; [print('{}: {}'.format(p, [(d.version, str(d._path)) for d in m.distributions() if (d.metadata.get('Name') or '').lower() == p] or 'NOT INSTALLED') for p in packages]"
+              docker run --rm -i --entrypoint python "$IMAGE" - <<'PYTHON'
+              import importlib.metadata as metadata
+
+              packages = ["flask", "msgpack", "setuptools", "urllib3"]
+
+              for package in packages:
+                  matches = [
+                      (dist.version, str(dist._path))
+                      for dist in metadata.distributions()
+                      if (dist.metadata.get("Name") or "").lower() == package
+                  ]
+
+                  print("{}: {}".format(
+                      package,
+                      matches if matches else "NOT INSTALLED"
+                  ))
+              PYTHON
 
               echo "=== Package metadata directories ==="
-              docker run --rm --entrypoint sh "$IMAGE" -c "find /usr/local/lib -type d \( -name 'msgpack*.dist-info' -o -name 'setuptools*.dist-info' -o -name 'urllib3*.dist-info' \) -print"
+              docker run --rm --entrypoint sh "$IMAGE" -c '
+                find /usr/local/lib -type d \( \
+                  -name "msgpack*.dist-info" -o \
+                  -name "setuptools*.dist-info" -o \
+                  -name "urllib3*.dist-info" \
+                \) -print
+              '
             displayName: 'Diagnose Python Package Metadata'
 
-          # 4. Scan the exact image that was just built
+          # 4. Scan the exact image that was built
           - script: |
               set -e
 
-              echo "Scanning Docker image for HIGH and CRITICAL vulnerabilities..."
+              echo "Scanning image for HIGH and CRITICAL vulnerabilities..."
 
               trivy image \
                 --scanners vuln \
