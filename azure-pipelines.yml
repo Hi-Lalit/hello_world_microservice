@@ -1,4 +1,29 @@
+
 trigger:
+- feature
+
+pool:
+  vmImage: 'ubuntu-22.04'
+
+stages:
+- stage: Build
+  displayName: 'Build and Security Scan'
+
+  jobs:
+  - job: BuildJob
+    displayName: 'Build Docker Image'
+
+    steps:
+    # 1. Scan source code and configuration files
+    - task: trivy@2
+      displayName: 'Trivy Filesystem Security Scan'
+      inputs:
+        type: 'filesystem'
+        target: '.'
+        scanners: 'vuln,misconfig,secret'
+        severities: 'HIGH,CRITICAL'
+        failOnSeverityThreshold: 'HIGH'
+        publish: truetrigger:
 - feature
 
 pool: 
@@ -40,3 +65,44 @@ stages:
         echo "Pushing Docker image to registry..."
         docker push $(target_image)/$(imageName):$(version)
       displayName: 'Push Docker Image to Registry'     
+
+    # 2. Build the Docker image
+    - script: |
+        set -e
+        echo "Building Docker image..."
+        docker build -t "$(imageName):$(version)" .
+      displayName: 'Build Docker Image'
+
+    # 3. Verify the built image
+    - script: |
+        docker images
+      displayName: 'Debug Docker Images'
+
+    # 4. Scan the actual Docker image
+    - script: |
+        set -e
+        trivy image \
+          --scanners vuln,misconfig,secret \
+          --severity HIGH,CRITICAL \
+          --exit-code 1 \
+          "$(imageName):$(version)"
+      displayName: 'Trivy Docker Image Scan'
+
+    # 5. Tag the image
+    - script: |
+        set -e
+        docker tag \
+          "$(imageName):$(version)" \
+          "$(target_image)/$(imageName):$(version)"
+      displayName: 'Tag Docker Image'
+
+    # 6. Authenticate and push
+    - script: |
+        set -e
+        echo "$(acrPassword)" | docker login "$(acrLoginServer)" \
+          -u "$(acrUsername)" --password-stdin
+
+        docker push "$(target_image)/$(imageName):$(version)"
+
+        docker logout "$(acrLoginServer)"
+      displayName: 'Push Docker Image to Registry'
