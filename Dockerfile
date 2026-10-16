@@ -5,6 +5,10 @@ WORKDIR /service
 COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade \
+       "msgpack>=1.2.1" \
+       "setuptools>=78.1.1" \
+       "urllib3>=2.8.0" \
     && addgroup -S appgroup \
     && adduser -S appuser -G appgroup
 
