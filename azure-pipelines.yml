@@ -25,33 +25,33 @@ stages:
 
           # 2. Build a fresh Docker image
           - script: |
-              set -e
+              set -eu
+
+              IMAGE="$(imageName):$(version)"
 
               echo "Building Docker image without cache..."
+              docker build --pull --no-cache -t "$IMAGE" .
 
-              docker build --pull --no-cache \
-                -t "$(imageName):$(version)" .
+              echo "=== Built image ID ==="
+              docker image inspect "$IMAGE" --format '{{.Id}}'
             displayName: 'Build Docker Image'
 
           # 3. Diagnose Trivy scanner and image
           - script: |
-              set -e
+              set -eu
 
-              echo "=== Trivy CLI version, if installed ==="
-              if command -v trivy >/dev/null 2>&1; then
-                trivy --version
-              else
-                echo "Trivy CLI is not on PATH; the extension may manage its own scanner."
-              fi
+              echo "=== Trivy CLI version ==="
+              trivy --version
 
               echo "=== Docker image ID ==="
-              docker image inspect "$(imageName):$(version)" \
+              docker image inspect \
+                "$(imageName):$(version)" \
                 --format '{{.Id}}'
             displayName: 'Diagnose Trivy Scanner and Image'
 
-          # 4. Diagnose installed Python packages and metadata
+          # 4. Check installed Python packages and metadata
           - script: |
-              set -e
+              set -eu
 
               IMAGE="$(imageName):$(version)"
 
@@ -74,7 +74,7 @@ stages:
                   ))
               PYTHON
 
-              echo "=== Package metadata directories ==="
+              echo "=== Matching package metadata directories ==="
 
               docker run --rm --entrypoint sh "$IMAGE" -c '
                 find /usr/local/lib -type d \( \
@@ -87,88 +87,110 @@ stages:
 
           # 5. Generate a detailed Trivy JSON report
           - script: |
-              set -e
+              set -eu
 
               IMAGE="$(imageName):$(version)"
+              REPORT="$(Build.ArtifactStagingDirectory)/trivy-image-report.json"
 
-              echo "Generating Trivy vulnerability report..."
+              mkdir -p "$(Build.ArtifactStagingDirectory)"
 
+              echo "=== Image ID before scanning ==="
+              docker image inspect "$IMAGE" --format '{{.Id}}'
+
+              echo "=== Generating Trivy JSON report ==="
               trivy image \
                 --scanners vuln \
                 --format json \
-                --output "$(Build.ArtifactStagingDirectory)/trivy-image-report.json" \
+                --output "$REPORT" \
                 "$IMAGE"
 
-              echo "=== Vulnerability findings for affected packages ==="
+              echo "=== HIGH and CRITICAL vulnerability findings ==="
 
-              python3 -c '
+              python3 - "$REPORT" <<'PYTHON'
               import json
+              import sys
 
-              path = "$(Build.ArtifactStagingDirectory)/trivy-image-report.json"
+              with open(sys.argv[1], encoding="utf-8") as file:
+                  report = json.load(file)
 
-              with open(path, encoding="utf-8") as f:
-                  report = json.load(f)
+              found = False
 
               for result in report.get("Results", []):
                   for vuln in result.get("Vulnerabilities") or []:
-                      if vuln.get("PkgName", "").lower() in {
-                          "msgpack", "setuptools", "urllib3"
-                      }:
-                          print(
-                              "Target:", result.get("Target"),
-                              "| Package:", vuln.get("PkgName"),
-                              "| Installed:", vuln.get("InstalledVersion"),
-                              "| Fixed:", vuln.get("FixedVersion"),
-                              "| ID:", vuln.get("VulnerabilityID")
+                      if vuln.get("Severity") not in ("HIGH", "CRITICAL"):
+                          continue
+
+                      found = True
+                      print(
+                          "Target={target} | Package={package} | "
+                          "Installed={installed} | Fixed={fixed} | "
+                          "Severity={severity} | ID={vuln_id}".format(
+                              target=result.get("Target", ""),
+                              package=vuln.get("PkgName", ""),
+                              installed=vuln.get("InstalledVersion", ""),
+                              fixed=vuln.get("FixedVersion", ""),
+                              severity=vuln.get("Severity", ""),
+                              vuln_id=vuln.get("VulnerabilityID", "")
                           )
-              '
+                      )
+
+              if not found:
+                  print("No HIGH or CRITICAL vulnerabilities found.")
+              PYTHON
             displayName: 'Generate Trivy Diagnostic Report'
 
-          # 6. Publish the diagnostic report even if a later step fails
+          # 6. Publish the report even if a later step fails
           - publish: '$(Build.ArtifactStagingDirectory)/trivy-image-report.json'
             artifact: 'trivy-diagnostic-report'
             displayName: 'Publish Trivy Diagnostic Report'
             condition: succeededOrFailed()
 
-          # 7. Enforce the HIGH/CRITICAL vulnerability gate
+          # 7. Enforce the HIGH/CRITICAL security gate
           - script: |
-              set -e
+              set -eu
 
-              echo "Scanning the exact image for HIGH and CRITICAL vulnerabilities..."
+              IMAGE="$(imageName):$(version)"
 
+              echo "=== Image ID being scanned ==="
+              docker image inspect "$IMAGE" --format '{{.Id}}'
+
+              echo "=== Enforcing vulnerability gate ==="
               trivy image \
                 --scanners vuln \
                 --severity HIGH,CRITICAL \
                 --exit-code 1 \
-                "$(imageName):$(version)"
+                "$IMAGE"
             displayName: 'Trivy Docker Image Security Gate'
 
-          # 8. Display available images for debugging
+          # 8. Display local images for debugging
           - script: |
-              set -e
+              set -eu
               docker images
             displayName: 'Debug Docker Images'
 
           # 9. Tag image for the container registry
           - script: |
-              set -e
+              set -eu
 
-              docker tag \
-                "$(imageName):$(version)" \
-                "$(target_image)/$(imageName):$(version)"
+              SOURCE_IMAGE="$(imageName):$(version)"
+              TARGET_IMAGE="$(target_image)/$(imageName):$(version)"
+
+              docker tag "$SOURCE_IMAGE" "$TARGET_IMAGE"
+
+              echo "Tagged image: $TARGET_IMAGE"
             displayName: 'Tag Docker Image'
 
           # 10. Login and push only after scans pass
           - script: |
-              set -e
+              set -eu
+
+              TARGET_IMAGE="$(target_image)/$(imageName):$(version)"
 
               echo "$(acrPassword)" | docker login "$(acrLoginServer)" \
-                -u "$(acrUsername)" \
+                --username "$(acrUsername)" \
                 --password-stdin
 
-              echo "Pushing Docker image to registry..."
-
-              docker push "$(target_image)/$(imageName):$(version)"
+              docker push "$TARGET_IMAGE"
 
               docker logout "$(acrLoginServer)"
             displayName: 'Push Docker Image to Registry'
